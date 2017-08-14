@@ -47,7 +47,6 @@ def udp_send(sip, dip, dport, size, npackets, bad_csum, wait, interval):
     data_tmp = "77 " * size
     data_tmp = data_tmp[:-1].split(" ")
     data = ''.join(data_tmp).decode('hex')
-    #pkt = IP(src=sip, dst=dip)/UDP(dport=dport)/Raw(load=data)
     
     ip = IP(src=sip, dst=dip)
     
@@ -59,18 +58,15 @@ def udp_send(sip, dip, dport, size, npackets, bad_csum, wait, interval):
         
     payload = Raw(load=data)
 
-	#pkt = IP(src=sip, dst=dip)/UDP(dport=dport, chksum=0xdeed)/Raw(load=data)
-	#pkt = IP(src=sip, dst=dip)/UDP(dport=dport)/Raw(load=data)
-    
     pkt = ip/udp/payload
     stat = "{sip:%s dip:%s}, {sport:%s dport:%s} {csum:%s size:%u}" % \
             (sip, dip, sport, dport, bad_csum, size)
 
     if wait:
         while npackets:
+            _ = raw_input("Hit 'enter' to send packet...")
             send(pkt, verbose=False)
             print "Sent %d UDP packet(s): %s" % (1, stat)
-            _ = raw_input("Hit 'enter'/'return' to continue...")
             npackets -= 1
     else:
         send(pkt, inter=interval, count=npackets)
