@@ -6,12 +6,13 @@ Craft and send few VxLAN encapsulated packets.
 
 import argparse
 import random
-from scapy.all import IP, TCP, UDP, Raw
-from scapy.all import get_if_list, get_if_addr, send, load_contrib
+from scapy.all import Ether, ARP, IP, TCP, UDP, Raw
+from scapy.all import get_if_list, get_if_addr, send, sr1, load_contrib
 
 from utils import csv2list
 
 # Default VxLAN port
+VXLAN_VNI = 1969
 VXLAN_PORT = 4789
 
 # Bad checksum to use
@@ -51,10 +52,11 @@ def __parse_args():
     parser.add_argument("-b", metavar="PKT-TYPE", dest="bad_csum", type=str,
                         help="force bad checksum for IPv4 and/or UDP packets")
     parser.add_argument("-V", metavar="VNI", dest="vni", type=int,
-                        help="VxLAN Network Identifier; default=24")
+                        default=VXLAN_VNI,
+                        help="VxLAN Network Identifier; default=1969")
     parser.add_argument("-P", metavar="VXLAN-PORT", dest="vxlan_port",
                         type=int, default=VXLAN_PORT,
-                        help="VxLAN UDP port number")
+                        help="VxLAN UDP port number; default=4789")
     parser.add_argument("-I", metavar="INNER-PKT", dest="inner_pkt", type=str,
                         required=True, help="inner packet type; tcp or udp")
 
@@ -77,6 +79,12 @@ def __parse_args():
                 ", ".join(INNER_PKT_TYPES)
 
     return args
+
+
+def mac_get(sip, dip):
+    """ Return the src and dst MAC by resolving ARP. """
+    arp_resp = sr1(ARP(op=ARP.who_has, psrc=sip, pdst=dip))
+    return arp_resp.hwdst, arp_resp.hwsrc
 
 
 def build_outer_pkt(pkt_cfg):
@@ -107,11 +115,15 @@ def build_outer_pkt(pkt_cfg):
 
 def build_inner_pkt(pkt_cfg):
     """ Build the inner packet. """
+    smac = pkt_cfg['smac']
+    dmac = pkt_cfg['dmac']
     sip = pkt_cfg['sip']
     dip = pkt_cfg['dip']
     size = pkt_cfg['size']
     inner_pkt = pkt_cfg['inner_pkt']
     bcsum = set(pkt_cfg['bad_csum'])
+
+    ether = Ether(dst=dmac, src=smac, type=0x800)
 
     if bcsum is not None and \
             any(l in ["all", "in-all", "in_ipv4"] for l in bcsum):
@@ -123,7 +135,7 @@ def build_inner_pkt(pkt_cfg):
     dport = random.randint(4096, 8192)
     if inner_pkt == "tcp":
         if bcsum is not None and \
-            any(l in ["all", "in-all", "in-tcp"] for l in bcsum):
+                any(l in ["all", "in-all", "in-tcp"] for l in bcsum):
             lyr4 = TCP(sport=sport, dport=dport, chksum=BCSUM['IN_TCP'])
         else:
             lyr4 = TCP(sport=sport, dport=dport)
@@ -139,7 +151,7 @@ def build_inner_pkt(pkt_cfg):
     data = ''.join(data_tmp).decode('hex')
     payload = Raw(load=data)
 
-    return ip4/lyr4/payload
+    return ether/ip4/lyr4/payload
 
 
 def send_pkt(pkt_cfg, pkt):
@@ -166,11 +178,12 @@ def send_pkt(pkt_cfg, pkt):
 def main():
     """ Entry point to the program. """
     pkt_cfg = vars(__parse_args())
+
     pkt_cfg['sip'] = get_if_addr(pkt_cfg['interface'])
+    pkt_cfg['smac'], pkt_cfg['dmac'] = mac_get(pkt_cfg['sip'], pkt_cfg['dip'])
     print pkt_cfg
 
     load_contrib('vxlan')
-
     outer_pkt = build_outer_pkt(pkt_cfg)
     inner_pkt = build_inner_pkt(pkt_cfg)
     send_pkt(pkt_cfg, outer_pkt/inner_pkt)
