@@ -121,7 +121,7 @@ def build_inner_pkt(pkt_cfg):
     dip = pkt_cfg['dip']
     size = pkt_cfg['size']
     inner_pkt = pkt_cfg['inner_pkt']
-    bcsum = set(pkt_cfg['bad_csum'])
+    bcsum = pkt_cfg['bad_csum']
 
     ether = Ether(dst=dmac, src=smac, type=0x800)
 
