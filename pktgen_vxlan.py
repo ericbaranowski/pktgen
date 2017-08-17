@@ -85,15 +85,17 @@ def build_outer_pkt(pkt_cfg):
     dip = pkt_cfg['dip']
     dport = pkt_cfg['vxlan_port']
     vni = pkt_cfg['vni']
-    bad_csum = pkt_cfg['bad_csum']
+    bcsum = pkt_cfg['bad_csum']
 
-    if bad_csum <= set(["all", "out-all", "out-ipv4"]):
+    if bcsum is not None and \
+            any(l in ["all", "out-all", "out-ipv4"] for l in bcsum):
         ip4 = IP(src=sip, dst=dip, chksum=BCSUM['OUT_IPV4'])
     else:
         ip4 = IP(src=sip, dst=dip)
 
     sport = random.randint(4096, 8192)
-    if bad_csum <= set(["all", "out-all", "out-udp"]):
+    if bcsum is not None and \
+            any(l in ["all", "out-all", "out-udp"] for l in bcsum):
         udp = UDP(sport=sport, dport=dport, chksum=BCSUM['OUT_UDP'])
     else:
         udp = UDP(sport=sport, dport=dport)
@@ -109,9 +111,10 @@ def build_inner_pkt(pkt_cfg):
     dip = pkt_cfg['dip']
     size = pkt_cfg['size']
     inner_pkt = pkt_cfg['inner_pkt']
-    bad_csum = set(pkt_cfg['bad_csum'])
+    bcsum = set(pkt_cfg['bad_csum'])
 
-    if bad_csum <= set(["all", "in-all", "in_ipv4"]):
+    if bcsum is not None and \
+            any(l in ["all", "in-all", "in_ipv4"] for l in bcsum):
         ip4 = IP(src=sip, dst=dip, chksum=BCSUM['IN_IPV4'])
     else:
         ip4 = IP(src=sip, dst=dip)
@@ -119,12 +122,14 @@ def build_inner_pkt(pkt_cfg):
     sport = random.randint(4096, 8192)
     dport = random.randint(4096, 8192)
     if inner_pkt == "tcp":
-        if bad_csum <= set(["all", "in-all", "in-tcp"]):
+        if bcsum is not None and \
+            any(l in ["all", "in-all", "in-tcp"] for l in bcsum):
             lyr4 = TCP(sport=sport, dport=dport, chksum=BCSUM['IN_TCP'])
         else:
             lyr4 = TCP(sport=sport, dport=dport)
     else:
-        if bad_csum <= set(["all", "in-all", "in-udp"]):
+        if bcsum is not None and \
+                any(l in ["all", "in-all", "in-udp"] for l in bcsum):
             lyr4 = UDP(sport=sport, dport=dport, chksum=BCSUM['IN_UDP'])
         else:
             lyr4 = UDP(sport=sport, dport=dport)
