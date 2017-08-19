@@ -34,6 +34,29 @@ IN_CSUM_TYPES = ["in-ipv4", "in-tcp", "in-udp", "in-all"]
 INNER_PKT_TYPES = ["tcp", "udp"]
 
 
+def __parse_bcsum(bcsum_type):
+    bcsum = {}
+
+    for pkt_type in CSUM_TYPES:
+        if pkt_type not in ["all", "out-all", "in-all"]:
+            bcsum[pkt_type] = False
+
+    if bcsum_type is not None:
+        if any(l in ["all", "out-all", "out-ipv4"] for l in bcsum_type):
+            bcsum['out-ipv4'] = True
+        if any(l in ["all", "out-all", "out-udp"] for l in bcsum_type):
+            bcsum['out-udp'] = True
+
+        if any(l in ["all", "in-all", "in-ipv4"] for l in bcsum_type):
+            bcsum['in-ipv4'] = True
+        if any(l in ["all", "in-all", "in-udp"] for l in bcsum_type):
+            bcsum['in-udp'] = True
+        if any(l in ["all", "in-all", "in-tcp"] for l in bcsum_type):
+            bcsum['in-tcp'] = True
+
+    return bcsum
+
+
 def __parse_args():
     parser = argparse.ArgumentParser(description="Send few UDP packets")
     parser.add_argument("-i", metavar="INTERFACE", dest="interface",
@@ -49,7 +72,7 @@ def __parse_args():
                         default=64, help="size of UDP payload in bytes")
     parser.add_argument("-w", dest="wait", action="store_true",
                         help="wait for user input between packets")
-    parser.add_argument("-b", metavar="PKT-TYPE", dest="bad_csum", type=str,
+    parser.add_argument("-b", metavar="PKT-TYPE", dest="bcsum_type", type=str,
                         help="force bad checksum for IPv4 and/or UDP packets")
     parser.add_argument("-V", metavar="VNI", dest="vni", type=int,
                         default=VXLAN_VNI,
@@ -66,13 +89,15 @@ def __parse_args():
         err = "Interface '" + args.interface + "' not found."
         raise parser.error(err)
 
-    if args.bad_csum is not None:
-        args.bad_csum = csv2list(args.bad_csum)
+    if args.bcsum_type is not None:
+        args.bcsum_type = csv2list(args.bcsum_type)
 
-        if (set(args.bad_csum) <= set(CSUM_TYPES)) is False:
+        if (set(args.bcsum_type) <= set(CSUM_TYPES)) is False:
             err = "Invalid PKT-TYPE for '-b'. Use one or more of '%s'." % \
                     ",".join(CSUM_TYPES)
             raise parser.error(err)
+
+    args.bcsum = __parse_bcsum(args.bcsum_type)
 
     if args.inner_pkt is not None and args.inner_pkt not in INNER_PKT_TYPES:
         err = "Invalid INNER-PKT for '-i'. Use one of '%s'." % \
@@ -83,7 +108,7 @@ def __parse_args():
 
 def mac_get(sip, dip):
     """ Return the src and dst MAC by resolving ARP. """
-    arp_resp = sr1(ARP(op=ARP.who_has, psrc=sip, pdst=dip))
+    arp_resp = sr1(ARP(op=ARP.who_has, psrc=sip, pdst=dip), verbose=False)
     return arp_resp.hwdst, arp_resp.hwsrc
 
 
@@ -93,17 +118,15 @@ def build_outer_pkt(pkt_cfg):
     dip = pkt_cfg['dip']
     dport = pkt_cfg['vxlan_port']
     vni = pkt_cfg['vni']
-    bcsum = pkt_cfg['bad_csum']
+    bcsum = pkt_cfg['bcsum']
 
-    if bcsum is not None and \
-            any(l in ["all", "out-all", "out-ipv4"] for l in bcsum):
+    if bcsum['out-ipv4'] is True:
         ip4 = IP(src=sip, dst=dip, chksum=BCSUM['OUT_IPV4'])
     else:
         ip4 = IP(src=sip, dst=dip)
 
     sport = random.randint(4096, 8192)
-    if bcsum is not None and \
-            any(l in ["all", "out-all", "out-udp"] for l in bcsum):
+    if bcsum['out-udp'] is True:
         udp = UDP(sport=sport, dport=dport, chksum=BCSUM['OUT_UDP'])
     else:
         udp = UDP(sport=sport, dport=dport)
@@ -121,12 +144,11 @@ def build_inner_pkt(pkt_cfg):
     dip = pkt_cfg['dip']
     size = pkt_cfg['size']
     inner_pkt = pkt_cfg['inner_pkt']
-    bcsum = pkt_cfg['bad_csum']
+    bcsum = pkt_cfg['bcsum']
 
     ether = Ether(dst=dmac, src=smac, type=0x800)
 
-    if bcsum is not None and \
-            any(l in ["all", "in-all", "in_ipv4"] for l in bcsum):
+    if bcsum['in-ipv4'] is True:
         ip4 = IP(src=sip, dst=dip, chksum=BCSUM['IN_IPV4'])
     else:
         ip4 = IP(src=sip, dst=dip)
@@ -134,14 +156,12 @@ def build_inner_pkt(pkt_cfg):
     sport = random.randint(4096, 8192)
     dport = random.randint(4096, 8192)
     if inner_pkt == "tcp":
-        if bcsum is not None and \
-                any(l in ["all", "in-all", "in-tcp"] for l in bcsum):
+        if bcsum['in-tcp'] is True:
             lyr4 = TCP(sport=sport, dport=dport, chksum=BCSUM['IN_TCP'])
         else:
             lyr4 = TCP(sport=sport, dport=dport)
     else:
-        if bcsum is not None and \
-                any(l in ["all", "in-all", "in-udp"] for l in bcsum):
+        if bcsum['in-udp'] is True:
             lyr4 = UDP(sport=sport, dport=dport, chksum=BCSUM['IN_UDP'])
         else:
             lyr4 = UDP(sport=sport, dport=dport)
@@ -160,6 +180,8 @@ def send_pkt(pkt_cfg, pkt):
     wait = pkt_cfg['wait']
     interval = pkt_cfg['interval']
 
+    print pkt.command()
+
     if wait:
         curr = 1
         total = npackets
@@ -170,9 +192,8 @@ def send_pkt(pkt_cfg, pkt):
             npackets -= 1
             curr += 1
     else:
-        send(pkt, inter=interval, count=npackets)
+        send(pkt, inter=interval, count=npackets, verbose=False)
         print "Sent %d VxLAN packets." % (npackets)
-        print pkt.command()
 
 
 def main():
