@@ -39,20 +39,20 @@ def __parse_bcsum(bcsum_type):
 
     for pkt_type in CSUM_TYPES:
         if pkt_type not in ["all", "out-all", "in-all"]:
-            bcsum[pkt_type] = False
+            bcsum[pkt_type] = None
 
     if bcsum_type is not None:
         if any(l in ["all", "out-all", "out-ipv4"] for l in bcsum_type):
-            bcsum['out-ipv4'] = True
+            bcsum['out-ipv4'] = BCSUM['IPV4']
         if any(l in ["all", "out-all", "out-udp"] for l in bcsum_type):
-            bcsum['out-udp'] = True
+            bcsum['out-udp'] = BCSUM['UDP']
 
         if any(l in ["all", "in-all", "in-ipv4"] for l in bcsum_type):
-            bcsum['in-ipv4'] = True
+            bcsum['in-ipv4'] = BCSUM['IPV4']
         if any(l in ["all", "in-all", "in-udp"] for l in bcsum_type):
-            bcsum['in-udp'] = True
+            bcsum['in-udp'] = BCSUM['UDP']
         if any(l in ["all", "in-all", "in-tcp"] for l in bcsum_type):
-            bcsum['in-tcp'] = True
+            bcsum['in-tcp'] = BCSUM['TCP']
 
     return bcsum
 
@@ -79,7 +79,7 @@ def __parse_pkt_types(args):
 
 
 def __parse_args():
-    parser = argparse.ArgumentParser(description="Send few UDP packets")
+    parser = argparse.ArgumentParser(description="Send few VXLAN packets")
     parser.add_argument("-i", metavar="INTERFACE", dest="interface",
                         action="store", type=str,
                         help="interface to send UDP packets")
@@ -157,10 +157,7 @@ def mac_get(sip, dip):
 def build_ip_hdr(ip_type, sip, dip, bcsum):
     """ Build IPv4 or IPv6 header. """
     if ip_type == "ipv4":
-        if bcsum is True:
-            ip_hdr = IP(src=sip, dst=dip, chksum=BCSUM['IPV4'])
-        else:
-            ip_hdr = IP(src=sip, dst=dip)
+        ip_hdr = IP(src=sip, dst=dip, chksum=bcsum)
     else:
         ip_hdr = IPv6(src=sip, dst=dip)
     return ip_hdr
@@ -169,15 +166,9 @@ def build_ip_hdr(ip_type, sip, dip, bcsum):
 def build_trspt_hdr(trspt_type, sport, dport, bcsum):
     """ Build TCP or UDP header. """
     if trspt_type == "tcp":
-        if bcsum is True:
-            trspt_hdr = TCP(sport=sport, dport=dport, chksum=BCSUM['TCP'])
-        else:
-            trspt_hdr = TCP(sport=sport, dport=dport)
-    elif trspt_type == "udp":
-        if bcsum is True:
-            trspt_hdr = UDP(sport=sport, dport=dport, chksum=BCSUM['UDP'])
-        else:
-            trspt_hdr = UDP(sport=sport, dport=dport)
+        trspt_hdr = TCP(sport=sport, dport=dport, chksum=bcsum)
+    else:
+        trspt_hdr = UDP(sport=sport, dport=dport, chksum=bcsum)
     return trspt_hdr
 
 
@@ -206,13 +197,8 @@ def build_inner_pkt(pkt_cfg):
     l2_hdr = Ether(dst=pkt_cfg['dmac'], src=pkt_cfg['smac'], type=0x800)
     l3_hdr = build_ip_hdr(in_pkt, rand_ip_get(in_pkt), rand_ip_get(in_pkt),
                           bcsum['in-ipv4'])
-
-    if in_trspt is "udp":
-        bcsum = bcsum['in-udp']
-    else:
-        bcsum = bcsum['in-tcp']
     l4_hdr = build_trspt_hdr(in_trspt, random.randint(4096, 8192),
-                             random.randint(4096, 8192), bcsum)
+                             random.randint(4096, 8192), bcsum['in-'+in_trspt])
 
     data_tmp = "77 " * pkt_cfg['size']
     data_tmp = data_tmp[:-1].split(" ")
