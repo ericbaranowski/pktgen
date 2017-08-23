@@ -22,6 +22,11 @@ BCSUM = {
     'TCP': 0xCCCC,
 }
 
+ETHER_TYPE = {
+    'ipv4': 0x0800,
+    'ipv6': 0x86DD
+}
+
 # Bad checksum options
 CSUM_TYPES = ["all", "out-ipv4", "out-udp", "out-all",
               "in-ipv4", "in-tcp", "in-udp", "in-all"]
@@ -60,22 +65,23 @@ def __parse_bcsum(bcsum_type):
 def __parse_pkt_types(args):
     if args.out_pkt not in OUTER_PKT_TYPES:
         return "Invalid OUTER-PKT for '-O'. Use one of '%s'." % \
-                ", ".join(OUTER_PKT_TYPES)
+                ", ".join(OUTER_PKT_TYPES), args
 
     if args.out_pkt is "ipv4" and args.dip4 is None:
         return "'-d DST-IPv4' is required for ipv4 outer packet."
     elif args.out_pkt is "ipv6" and args.dip6 is None:
-        return "-D DST-IPv6 is required for ipv6 outer packet."
+        return "-D DST-IPv6 is required for ipv6 outer packet.", args
 
     if args.in_pkt not in INNER_PKT_TYPES:
         return "Invalid INNER-PKT for '-I'. Use one of '%s'." % \
-                ", ".join(INNER_PKT_TYPES)
+                ", ".join(INNER_PKT_TYPES), args
 
     if args.in_trspt not in INNER_TRSPT_TYPES:
         return "Invalid INNER-TRSPT for '-T'. Use one of '%s'." % \
-                ", ".join(INNER_TRSPT_TYPES)
+                ", ".join(INNER_TRSPT_TYPES), args
 
-    return None
+    args.etype = ETHER_TYPE[args.in_pkt]
+    return None, args
 
 
 def __parse_args():
@@ -112,7 +118,6 @@ def __parse_args():
     parser.add_argument("-T", metavar="INNER-TRSPT", dest="in_trspt",
                         type=str, default="udp",
                         help="inner transport type; tcp or udp; default=udp")
-
     args = parser.parse_args()
 
     if args.interface not in get_if_list():
@@ -121,15 +126,13 @@ def __parse_args():
 
     if args.bcsum_type is not None:
         args.bcsum_type = csv2list(args.bcsum_type)
-
         if (set(args.bcsum_type) <= set(CSUM_TYPES)) is False:
             err = "Invalid PKT-TYPE for '-b'. Use one or more of '%s'." % \
                     ",".join(CSUM_TYPES)
             raise parser.error(err)
-
     args.bcsum = __parse_bcsum(args.bcsum_type)
 
-    err = __parse_pkt_types(args)
+    err, args = __parse_pkt_types(args)
     if err is not None:
         raise parser.error(err)
 
@@ -194,7 +197,8 @@ def build_inner_pkt(pkt_cfg):
     in_trspt = pkt_cfg['in_trspt']
     bcsum = pkt_cfg['bcsum']
 
-    l2_hdr = Ether(dst=pkt_cfg['dmac'], src=pkt_cfg['smac'], type=0x800)
+    l2_hdr = Ether(dst=pkt_cfg['dmac'], src=pkt_cfg['smac'],
+                   type=pkt_cfg['etype'])
     l3_hdr = build_ip_hdr(in_pkt, rand_ip_get(in_pkt), rand_ip_get(in_pkt),
                           bcsum['in-ipv4'])
     l4_hdr = build_trspt_hdr(in_trspt, random.randint(4096, 8192),
