@@ -87,11 +87,12 @@ def __parse_pkt_types(args):
 def __parse_args():
     parser = argparse.ArgumentParser(description="Send few VXLAN packets")
     parser.add_argument("-i", metavar="INTERFACE", dest="interface",
-                        action="store", type=str,
+                        action="store", type=str, required=True,
                         help="interface to send UDP packets")
-    parser.add_argument("-d", metavar="DST-IPv4", dest="dip4", type=str,
+    out_ip = parser.add_mutually_exclusive_group(required=True)
+    out_ip.add_argument("-d", metavar="DST-IPv4", dest="dip4", type=str,
                         help="destination IPv4 address")
-    parser.add_argument("-D", metavar="DST-IPv6", dest="dip6", type=str,
+    out_ip.add_argument("-D", metavar="DST-IPv6", dest="dip6", type=str,
                         help="destination IPv6 address")
     parser.add_argument("-n", metavar="NPACKETS", dest="npackets", type=int,
                         default=4, help="number of UDP packets to send")

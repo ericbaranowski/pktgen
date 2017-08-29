@@ -17,12 +17,12 @@ PKT_TYPES = ["ipv4", "udp", "all"]
 def __parse_args():
     parser = argparse.ArgumentParser(description="Send few UDP packets")
     parser.add_argument("-i", metavar="INTERFACE", dest="interface",
-                        action="store", type=str,
+                        action="store", type=str, required=True,
                         help="interface to send UDP packets")
     parser.add_argument("-d", metavar="DST-IP", dest="dip", type=str,
-                        help="destination IP address")
+                        required=True, help="destination IP address")
     parser.add_argument("-p", metavar="DST-PORT", dest="dport", type=int,
-                        help="destination UDP port")
+                        required=True, help="destination UDP port")
     parser.add_argument("-n", metavar="NPACKETS", dest="npackets", type=int,
                         default=4, help="number of UDP packets to send")
     parser.add_argument("-g", metavar="INTERVAL", dest="interval", type=int,
